@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from langchain_community.llms import Ollama
+from mistralai import Mistral
 
 # -----------------------
 # Config
@@ -8,14 +8,11 @@ from langchain_community.llms import Ollama
 EXIT_KEYWORDS = {"exit", "quit", "bye", "stop", "end"}
 STORAGE_FILE = "candidates.json"
 
-# Use a local instruct model (Mistral or LLaMA 3 recommended)
-MODEL_NAME = "mistral"   # or "llama3"
+# Use Mistral hosted API (instead of local Ollama)
+MODEL_NAME = "mistral-small"   # can also try "mistral-medium" or "mistral-large"
 
-# Init Ollama LLM
-llm = Ollama(
-    model=MODEL_NAME,
-    temperature=0.2  # keep responses focused
-)
+# Init Mistral LLM
+client = Mistral(api_key=st.secrets["96pgqv3jgmvI8nMIv4UgiFga3leincqp"])
 
 # -----------------------
 # Helpers
@@ -32,7 +29,7 @@ def save_candidate(data):
         json.dump(db, f, indent=2)
 
 def generate_questions(tech_stack):
-    """Generate structured technical questions in ENGLISH."""
+    """Generate structured technical questions in ENGLISH using Mistral."""
     prompt = f"""
     Candidate tech stack: {tech_stack}.
     For each technology, generate exactly 3 short interview questions in ENGLISH.
@@ -44,20 +41,26 @@ def generate_questions(tech_stack):
     No explanations, no extra text, only valid JSON.
     """
 
-    response = llm.invoke(prompt)
+    response = client.chat.complete(
+        model=MODEL_NAME,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+
+    raw = response.choices[0].message["content"]
 
     # Try to parse clean JSON
     try:
-        return json.loads(response)
+        return json.loads(raw)
     except:
-        cleaned = response.strip().split("```")[-1]
+        cleaned = raw.strip().split("```")[-1]
         try:
             return json.loads(cleaned)
         except:
-            return {"Error": [response]}
+            return {"Error": [raw]}
 
 def chat_response(user_input):
-    """Wraps user input in instruction prompt so model gives answers (not repeats)."""
+    """Handles normal chat responses."""
     prompt = f"""
     You are TalentScout Hiring Assistant.
     Always answer clearly in English.
@@ -66,18 +69,22 @@ def chat_response(user_input):
     Question: {user_input}
     Answer:
     """
-    response_chunks = []
-    for chunk in llm.stream(prompt):
-        response_chunks.append(chunk)
-    return "".join(response_chunks)
+
+    response = client.chat.complete(
+        model=MODEL_NAME,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+
+    return response.choices[0].message["content"]
 
 def estimate_skill_levels(qa_history, tech_stack):
     """Estimate skill levels (Beginner / Intermediate / Expert) based on candidate answers."""
     answers = "\n".join(
         f"Q: {q}\nA: {a}" 
         for role, msg in qa_history 
-        if role == "Assistant" or role == "You" 
-        for q, a in [(msg, "")] if role == "You"
+        if role == "You"
+        for q, a in [(msg, "")]
     )
 
     prompt = f"""
@@ -93,11 +100,18 @@ def estimate_skill_levels(qa_history, tech_stack):
       "Django": "Beginner"
     }}
     """
-    response = llm.invoke(prompt)
+
+    response = client.chat.complete(
+        model=MODEL_NAME,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+
+    raw = response.choices[0].message["content"]
     try:
-        return json.loads(response)
+        return json.loads(raw)
     except:
-        return {"Error": response}
+        return {"Error": raw}
 
 # -----------------------
 # Streamlit UI
@@ -174,7 +188,7 @@ if st.session_state.candidate_info.get("tech_stack"):
                 st.write(f"{i}. {q}")
 
 # -----------------------
-# Chatbox for conversation (fixed with on_change)
+# Chatbox for conversation
 # -----------------------
 st.subheader("💬 Chat with Assistant")
 
