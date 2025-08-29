@@ -12,7 +12,7 @@ STORAGE_FILE = "candidates.json"
 MODEL_NAME = "mistral-small"   # can also try "mistral-medium" or "mistral-large"
 
 # Init Mistral LLM
-client = Mistral(api_key=st.secrets["96pgqv3jgmvI8nMIv4UgiFga3leincqp"])
+client = Mistral(api_key=st.secrets["MISTRAL_API_KEY"])
 
 # -----------------------
 # Helpers
@@ -251,3 +251,4 @@ if st.button("📊 Estimate Skill Levels"):
         st.json(st.session_state.skill_levels)
     else:
         st.warning("⚠️ Please complete candidate details and provide some answers first.")
+
